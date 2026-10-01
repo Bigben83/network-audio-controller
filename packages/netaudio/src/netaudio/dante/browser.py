@@ -25,6 +25,7 @@ from netaudio.dante.const import MEDIA_SERVICE_TYPES, SERVICE_ARC, SERVICE_CMC, 
 from netaudio.dante.device import DanteDevice
 from netaudio.dante.discovery import request_discovery
 from netaudio.dante.latency import nanoseconds_to_milliseconds
+from netaudio.network_path import preferred_device_address
 
 logger = logging.getLogger("netaudio")
 
@@ -85,15 +86,13 @@ class DanteBrowser:
             service_properties[key] = value
 
         records = zeroconf.cache.entries_with_name(name)
-        addresses = info.parsed_addresses()
+        ipv4 = preferred_device_address(info.parsed_addresses(), app_settings.interface)
 
-        if not addresses:
+        if ipv4 is None:
             return
 
         for record in records:
             if isinstance(record, DNSService):
-                ipv4 = addresses[0]
-
                 message = {
                     "service": {
                         "ipv4": ipv4,
@@ -138,15 +137,13 @@ class DanteBrowser:
             service_properties[key] = value
 
         records = zeroconf.cache.entries_with_name(name)
-        addresses = info.parsed_addresses()
+        ipv4 = preferred_device_address(info.parsed_addresses(), app_settings.interface)
 
-        if not addresses:
+        if ipv4 is None:
             return
 
         for record in records:
             if isinstance(record, DNSService):
-                ipv4 = addresses[0]
-
                 message = {
                     "service": {
                         "ipv4": ipv4,
@@ -405,12 +402,10 @@ class DanteBrowser:
             return
 
         host = zeroconf.cache.entries_with_name(name)
-        addresses = info.parsed_addresses()
+        ipv4 = preferred_device_address(info.parsed_addresses(), app_settings.interface)
 
-        if not addresses:
+        if ipv4 is None:
             return
-
-        ipv4 = addresses[0]
 
         try:
             for key, value in info.properties.items():

@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 from zeroconf import ServiceStateChange
 
+from netaudio import network_path
+from netaudio.common.app_config import settings as app_settings
 from netaudio.daemon import discovery
 from netaudio.daemon.discovery import DanteDiscoveryMixin
 from netaudio.dante.const import SERVICE_ARC, SERVICE_CMC, SERVICE_VIDEO
@@ -177,6 +179,26 @@ async def test_new_cmc_service_registers_identity_metadata_and_queries(monkeypat
     event = daemon.application.dispatcher.emit_nowait.call_args.args[0]
     assert event.type == EventType.DEVICE_DISCOVERED
     assert event.server_name == "rack.local."
+
+
+@pytest.mark.asyncio
+async def test_multi_homed_device_uses_the_address_on_the_selected_interface(monkeypatch):
+    _install_service_info(monkeypatch, addresses=("fe80::10", "198.51.100.10", "192.0.2.10"))
+    adapters = [SimpleNamespace(nice_name="en1", ips=[SimpleNamespace(ip="192.0.2.5", network_prefix=24)])]
+    monkeypatch.setattr(network_path.ifaddr, "get_adapters", lambda: adapters)
+    monkeypatch.setattr(app_settings, "interface", "en1")
+    monkeypatch.setattr(discovery, "notify_systemd", MagicMock())
+    daemon = _DiscoveryHarness()
+
+    await daemon.handle_service_change(
+        _zeroconf(SimpleNamespace(server="rack.local.")),
+        SERVICE_CMC,
+        f"rack.{SERVICE_CMC}",
+        ServiceStateChange.Added,
+    )
+
+    assert str(daemon.devices["rack.local."].ipv4) == "192.0.2.10"
+    daemon.application.cmc.register_device.assert_awaited_once_with("192.0.2.10")
 
 
 @pytest.mark.asyncio

@@ -118,6 +118,28 @@ def active_ipv4_interfaces(
     return tuple(sorted(interfaces))
 
 
+def preferred_device_address(
+    addresses: Iterable[str],
+    selected_interface: str | None = None,
+    *,
+    adapters: Iterable | None = None,
+) -> str | None:
+    candidates = []
+    for address in addresses:
+        try:
+            candidates.append(ipaddress.IPv4Address(address))
+        except ipaddress.AddressValueError:
+            continue
+    if not candidates:
+        return None
+    if selected_interface:
+        for interface in active_ipv4_interfaces(selected_interface, adapters=adapters, service_order={}):
+            for candidate in candidates:
+                if candidate in interface.network:
+                    return str(candidate)
+    return str(candidates[0])
+
+
 class NetworkPathManager:
     def __init__(
         self,

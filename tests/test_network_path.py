@@ -9,6 +9,7 @@ from netaudio.network_path import (
     NetworkPathError,
     NetworkPathManager,
     active_ipv4_interfaces,
+    preferred_device_address,
 )
 
 
@@ -142,3 +143,25 @@ def test_ambiguous_link_local_destination_fails_closed():
 
     with pytest.raises(NetworkPathError, match="multiple interface-scoped networks"):
         manager.resolve("169.254.30.2")
+
+
+MULTI_HOMED_ADAPTERS = [
+    SimpleNamespace(nice_name="en0", ips=[SimpleNamespace(ip="198.51.100.2", network_prefix=24)]),
+    SimpleNamespace(nice_name="en1", ips=[SimpleNamespace(ip="192.0.2.5", network_prefix=24)]),
+]
+
+
+def test_device_address_on_the_selected_interface_subnet_is_preferred():
+    addresses = ["198.51.100.9", "192.0.2.7"]
+
+    assert preferred_device_address(addresses, "en1", adapters=MULTI_HOMED_ADAPTERS) == "192.0.2.7"
+    assert preferred_device_address(addresses, "en0", adapters=MULTI_HOMED_ADAPTERS) == "198.51.100.9"
+
+
+def test_device_address_falls_back_to_the_first_ipv4_address():
+    addresses = ["fe80::1", "203.0.113.4", "192.0.2.7"]
+
+    assert preferred_device_address(addresses, adapters=MULTI_HOMED_ADAPTERS) == "203.0.113.4"
+    assert preferred_device_address(["203.0.113.4"], "en1", adapters=MULTI_HOMED_ADAPTERS) == "203.0.113.4"
+    assert preferred_device_address(["fe80::1", "2001:db8::4"], "en1", adapters=MULTI_HOMED_ADAPTERS) is None
+    assert preferred_device_address([], adapters=MULTI_HOMED_ADAPTERS) is None

@@ -104,3 +104,103 @@ fn issue_53_tesira_offset_8_is_not_used_as_the_audio_channel_count() {
             .collect::<Vec<_>>()
     );
 }
+
+fn receiver_flow_routing(page: &ReceiverFlowPage) -> Vec<Vec<Vec<u16>>> {
+    page.flows
+        .iter()
+        .map(|flow| flow.receiver_channel_numbers_by_flow_channel.clone())
+        .collect()
+}
+
+fn receiver_flow_endpoints(page: &ReceiverFlowPage) -> Vec<(u8, u16, Option<&str>)> {
+    page.flows
+        .iter()
+        .flat_map(|flow| &flow.interface_endpoints)
+        .map(|endpoint| {
+            (
+                endpoint.descriptor_length_bytes,
+                endpoint.udp_port,
+                endpoint.ipv4_address.as_deref(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn issue_55_tesira_receiver_flows_use_four_word_bitmaps() {
+    let page = parse_receiver_flow_page(&payload(&["issue_55", "tesira_receiver_flows"])).unwrap();
+
+    assert_eq!(page.reported_flow_count, 3);
+    assert!(page
+        .flows
+        .iter()
+        .all(|flow| flow.receiver_bitmap_word_count == 4));
+    assert_eq!(
+        receiver_flow_routing(&page),
+        [
+            vec![vec![1], vec![2]],
+            vec![vec![3], vec![4]],
+            vec![vec![5], vec![6], vec![7], vec![8]],
+        ]
+    );
+    assert_eq!(
+        receiver_flow_endpoints(&page),
+        [
+            (8, 14381, Some("192.0.2.4")),
+            (8, 14383, Some("192.0.2.4")),
+            (8, 14387, Some("192.0.2.4")),
+        ]
+    );
+    assert!(page
+        .flows
+        .iter()
+        .all(|flow| flow.latency_nanoseconds == 10_000_000));
+}
+
+#[test]
+fn issue_55_mxwani4_receiver_flows_use_ten_word_bitmaps() {
+    for (fixture_name, address, routing) in [
+        (
+            "mxwani4_first_receiver_flows",
+            "192.0.2.5",
+            vec![vec![1], vec![2], vec![3], vec![4]],
+        ),
+        (
+            "mxwani4_second_receiver_flows",
+            "192.0.2.6",
+            vec![vec![1], vec![2], vec![], vec![]],
+        ),
+    ] {
+        let page = parse_receiver_flow_page(&payload(&["issue_55", fixture_name])).unwrap();
+
+        assert_eq!(page.reported_flow_count, 1, "{fixture_name}");
+        assert_eq!(
+            page.flows[0].receiver_bitmap_word_count, 10,
+            "{fixture_name}"
+        );
+        assert_eq!(receiver_flow_routing(&page), [routing], "{fixture_name}");
+        assert_eq!(
+            receiver_flow_endpoints(&page),
+            [(8, 14337, Some(address))],
+            "{fixture_name}"
+        );
+        assert_eq!(
+            page.flows[0].latency_nanoseconds, 5_000_000,
+            "{fixture_name}"
+        );
+    }
+}
+
+#[test]
+fn issue_55_via_control_receiver_flows_still_parse() {
+    let page = parse_receiver_flow_page(&payload(&["issue_55", "via_receiver_flows"])).unwrap();
+
+    assert_eq!(
+        receiver_flow_routing(&page),
+        [vec![vec![2, 4], vec![5], vec![], vec![]]]
+    );
+    assert!(page
+        .flows
+        .iter()
+        .all(|flow| flow.latency_nanoseconds == 10_000_000));
+}
